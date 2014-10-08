@@ -1,4 +1,4 @@
-modernextradigtime
+modernextradigtime V2
 ==================
 
-Modern extra with digital time.
+Fork of Modern extra with digital time by edwinfinch.
