@@ -1,17 +1,13 @@
 {
     "appKeys": {},
     "capabilities": [
-        ""
+        "configurable"
     ],
-    "companyName": "Edwin Finch",
-    "longName": "Modern Extra",
+    "companyName": "Thorsten Stark",
+    "longName": "Modern Extra V2",
+    "projectType": "native",
     "resources": {
         "media": [
-            {
-                "file": "images/modern_background_new.png",
-                "name": "IMAGE_BACKGROUND",
-                "type": "png"
-            },
             {
                 "file": "images/modern_logo.png",
                 "menuIcon": true,
@@ -19,8 +15,8 @@
                 "type": "png"
             },
             {
-                "file": "images/battery_icon.png",
-                "name": "BATTERY_ICON",
+                "file": "images/bluetooth.png",
+                "name": "BLUETOOTH",
                 "type": "png"
             },
             {
@@ -29,14 +25,19 @@
                 "type": "png"
             },
             {
-                "file": "images/bluetooth.png",
-                "name": "BLUETOOTH",
+                "file": "images/battery_icon.png",
+                "name": "BATTERY_ICON",
+                "type": "png"
+            },
+            {
+                "file": "images/modern_background_new.png",
+                "name": "IMAGE_BACKGROUND",
                 "type": "png"
             }
         ]
     },
-    "shortName": "Modern Extra",
-    "uuid": "698B3E04-B12E-4FF5-BFAD-1BE6BDEEB5D9",
+    "shortName": "Modern Extra V2",
+    "uuid": "698B3E04-B12E-4FF5-BFAD-1BE6BDEEB599",
     "versionCode": 1,
     "versionLabel": "1.0",
     "watchapp": {
