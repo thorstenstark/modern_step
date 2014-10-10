@@ -4,7 +4,7 @@
         "configurable"
     ],
     "companyName": "Thorsten Stark",
-    "longName": "Modern Extra V2",
+    "longName": "Modern Step",
     "projectType": "native",
     "resources": {
         "media": [
@@ -36,7 +36,7 @@
             }
         ]
     },
-    "shortName": "Modern Extra V2",
+    "shortName": "Modern Step",
     "uuid": "698B3E04-B12E-4FF5-BFAD-1BE6BDEEB599",
     "versionCode": 1,
     "versionLabel": "1.0",

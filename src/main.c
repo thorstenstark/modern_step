@@ -8,7 +8,7 @@ static Layer *minute_display_layer;
 static Layer *hour_display_layer;
 static Layer *center_display_layer;
 static Layer *second_display_layer;
-static TextLayer *date_layer , *dig_time_layer;
+static TextLayer *date_layer , *dig_time_layer, *steps_layer;
 static char date_text[] = "Wed 13 ";
 static char timeBuffer[] = "00:00.";
 static bool bt_ok = false;
@@ -23,6 +23,7 @@ static Layer *battery_layer;
 static Layer *bt_layer;
 
 bool g_conserve = false;
+bool showSeconds = false;
 static Layer *background_layer;
 static Layer *window_layer;
 
@@ -48,6 +49,56 @@ int init_anim = ANIM_DONE;
 int32_t second_angle_anim = 0;
 unsigned int minute_angle_anim = 0;
 unsigned int hour_angle_anim = 0;
+/*
+ * Variables for Step Counting
+ */
+// Total Steps (TS)
+#define TS 1
+// Total Steps Default (TSD)
+#define TSD 1
+ 
+// Timer used to determine next step check
+static AppTimer *timer;
+
+// interval to check for next step (in ms)
+const int ACCEL_STEP_MS = 475;
+// value to auto adjust step acceptance 
+const int PED_ADJUST = 2;
+// steps required per calorie
+const int STEPS_PER_CALORIE = 22;
+// value by which step goal is incremented
+const int STEP_INCREMENT = 50;
+// values for max/min number of calibration options 
+const int MAX_CALIBRATION_SETTINGS = 3;
+const int MIN_CALIBRATION_SETTINGS = 1;
+
+int X_DELTA = 75;
+int Y_DELTA, Z_DELTA = 205;
+int YZ_DELTA_MIN = 175;
+int YZ_DELTA_MAX = 205; 
+int X_DELTA_TEMP, Y_DELTA_TEMP, Z_DELTA_TEMP = 0;
+int lastX, lastY, lastZ, currX, currY, currZ = 0;
+int sensitivity = 1;
+
+long stepGoal = 8000;
+long pedometerCount = 0;
+long caloriesBurned = 0;
+long tempTotal = 0;
+
+bool did_pebble_vibrate = false;
+bool validX, validY, validZ = false;
+bool SID;
+bool isDark;
+bool startedSession = false;
+bool usePowerSaving = true;
+
+// Strings used to display theme and calibration options
+char *theme;
+char *cal = "Regular Sensitivity";
+
+// stores total steps since app install
+static long totalSteps = TSD;
+int32_t lastHour = 0;
 
 void handle_timer(void* vdata) {
 
@@ -154,7 +205,10 @@ void hour_display_layer_update_callback(Layer *me, GContext* ctx) {
 
 	time_t now = time(NULL);
 	struct tm *t = localtime(&now);
-
+  
+  if (lastHour > t->tm_hour){
+    pedometerCount = 0;
+  }
 	unsigned int angle = t->tm_hour * 30 + t->tm_min / 2;
 
 	if (init_anim < ANIM_HOURS) {
@@ -169,6 +223,8 @@ void hour_display_layer_update_callback(Layer *me, GContext* ctx) {
 		} else {
 			angle = hour_angle_anim;
 		}
+    
+    lastHour = t->tm_hour;
 	}
 
 	gpath_rotate_to(hour_hand_path, (TRIG_MAX_ANGLE / 360) * angle);
@@ -215,8 +271,8 @@ void battery_state_handler(BatteryChargeState charge) {
 	layer_mark_dirty(battery_layer);
 	if (!battery_plugged && battery_level < 20)
 		conserve_power(true);
-	else
-		conserve_power(false);
+	//else
+		//conserve_power(false);
 }
 
 /*
@@ -272,6 +328,18 @@ void init() {
 	layer_add_child(window_layer, text_layer_get_layer(dig_time_layer));
 
 	draw_date();
+  
+  // Steps setup
+	steps_layer = text_layer_create(GRect(27, 22, 90, 21));
+	text_layer_set_text_color(steps_layer, GColorWhite);
+	text_layer_set_text_alignment(steps_layer, GTextAlignmentCenter);
+	text_layer_set_background_color(steps_layer, GColorClear);
+	text_layer_set_font(steps_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18));
+	layer_add_child(window_layer, text_layer_get_layer(steps_layer));
+  
+  static char buf[] = "123456890abcdefghijkl";
+  snprintf(buf, sizeof(buf), "%ld", pedometerCount);
+	text_layer_set_text(steps_layer, buf);
 
 	// Status setup
 	icon_battery = gbitmap_create_with_resource(RESOURCE_ID_BATTERY_ICON);
@@ -291,6 +359,8 @@ void init() {
 	layer_set_update_proc(bt_layer, &bt_layer_update_callback);
 	layer_add_child(window_layer, bt_layer);
 
+  
+  
 	// Hands setup
 	hour_display_layer = layer_create(GRECT_FULL_WINDOW);
 	layer_set_update_proc(hour_display_layer,
@@ -317,26 +387,14 @@ void init() {
 	layer_set_update_proc(second_display_layer,
 			&second_display_layer_update_callback);
 	layer_add_child(window_layer, second_display_layer);
+  
+  //Power consumption
+  conserve_power(true);
+  
+  
 }
 
-void deinit() {
-	window_destroy(window);
-	gbitmap_destroy(background_image_container);
-	gbitmap_destroy(icon_battery);
-	gbitmap_destroy(icon_battery_charge);
-	gbitmap_destroy(icon_bt);
-	text_layer_destroy(date_layer);
-	text_layer_destroy(dig_time_layer);
-	layer_destroy(minute_display_layer);
-	layer_destroy(hour_display_layer);
-	layer_destroy(center_display_layer);
-	layer_destroy(second_display_layer);
-	layer_destroy(battery_layer);
-	layer_destroy(bt_layer);
-	layer_destroy(background_layer);
-	gpath_destroy(hour_hand_path);
-	gpath_destroy(minute_hand_path);
-}
+
 
 void handle_tick(struct tm *tick_time, TimeUnits units_changed) {
 
@@ -369,6 +427,9 @@ void handle_tick(struct tm *tick_time, TimeUnits units_changed) {
 	text_layer_set_text(dig_time_layer, timeBuffer);
 }
 
+/*
+ * Conserve Power if Battery is low 
+ */
 void conserve_power(bool conserve) {
 	if (conserve == g_conserve)
 		return;
@@ -377,24 +438,227 @@ void conserve_power(bool conserve) {
 		tick_timer_service_unsubscribe();
 		tick_timer_service_subscribe(MINUTE_UNIT, &handle_tick);
 		layer_set_hidden(second_display_layer, true);
-	} else {
+	} else if (showSeconds) {
 		tick_timer_service_unsubscribe();
 		tick_timer_service_subscribe(SECOND_UNIT, &handle_tick);
 		layer_set_hidden(second_display_layer, false);
 	}
 }
 
+/*
+ * Step Counter (Code basicly from https://github.com/jathusanT/pebble_pedometer)
+ */
 
+
+
+void autoCorrectZ(){
+	if (Z_DELTA > YZ_DELTA_MAX){
+		Z_DELTA = YZ_DELTA_MAX; 
+	} else if (Z_DELTA < YZ_DELTA_MIN){
+		Z_DELTA = YZ_DELTA_MIN;
+	}
+}
+
+void autoCorrectY(){
+	if (Y_DELTA > YZ_DELTA_MAX){
+		Y_DELTA = YZ_DELTA_MAX; 
+	} else if (Y_DELTA < YZ_DELTA_MIN){
+		Y_DELTA = YZ_DELTA_MIN;
+	}
+}
+
+void pedometer_update() {
+	if (startedSession) {
+		X_DELTA_TEMP = abs(abs(currX) - abs(lastX));
+		if (X_DELTA_TEMP >= X_DELTA) {
+			validX = true;
+		}
+		Y_DELTA_TEMP = abs(abs(currY) - abs(lastY));
+		if (Y_DELTA_TEMP >= Y_DELTA) {
+			validY = true;
+			if (Y_DELTA_TEMP - Y_DELTA > 200){
+				autoCorrectY();
+				Y_DELTA = (Y_DELTA < YZ_DELTA_MAX) ? Y_DELTA + PED_ADJUST : Y_DELTA;
+			} else if (Y_DELTA - Y_DELTA_TEMP > 175){
+				autoCorrectY();
+				Y_DELTA = (Y_DELTA > YZ_DELTA_MIN) ? Y_DELTA - PED_ADJUST : Y_DELTA;
+			}
+		}
+		Z_DELTA_TEMP = abs(abs(currZ) - abs(lastZ));
+		if (Z_DELTA_TEMP >= Z_DELTA) {
+			validZ = true;
+			if (Z_DELTA_TEMP - Z_DELTA > 200){
+				autoCorrectZ();
+				Z_DELTA = (Z_DELTA < YZ_DELTA_MAX) ? Z_DELTA + PED_ADJUST : Z_DELTA;
+			} else if (Z_DELTA - Z_DELTA_TEMP > 175){
+				autoCorrectZ();
+				Z_DELTA = (Z_DELTA < YZ_DELTA_MAX) ? Z_DELTA + PED_ADJUST : Z_DELTA;
+			}
+		}
+	} else {
+		startedSession = true;
+	}
+}
+
+void resetUpdate() {
+	lastX = currX;
+	lastY = currY;
+	lastZ = currZ;
+	validX = false;
+	validY = false;
+	validZ = false;
+}
+
+void update_ui_callback() {
+	if ((validX && validY && !did_pebble_vibrate) || (validX && validZ && !did_pebble_vibrate)) {
+		pedometerCount++;
+		//tempTotal++;
+
+		//caloriesBurned = (int) (pedometerCount / STEPS_PER_CALORIE);
+		//static char calBuf[] = "123456890abcdefghijkl";
+		//snprintf(calBuf, sizeof(calBuf), "%ld Calories", caloriesBurned);
+		//text_layer_set_text(calories, calBuf);
+
+    // steps
+		static char buf[] = "123456890abcdefghijkl";
+		snprintf(buf, sizeof(buf), "%ld", pedometerCount);
+		text_layer_set_text(steps_layer, buf);
+
+    // total steps
+		//static char buf2[] = "123456890abcdefghijkl";
+		//snprintf(buf2, sizeof(buf2), "%ld in Total", tempTotal);
+		//menu_items[2].subtitle = buf2;
+    
+    // burned calories
+		/*static char buf3[] = "1234567890abcdefg";
+		snprintf(buf3, sizeof(buf3), "%ld Burned",
+				(long) (tempTotal / STEPS_PER_CALORIE));
+		menu_items[3].subtitle = buf3;
+    */
+		//layer_mark_dirty(window_get_root_layer(pedometer));
+		//layer_mark_dirty(window_get_root_layer(menu_window));
+
+		if (stepGoal > 0 && pedometerCount == stepGoal) {
+			vibes_long_pulse();
+			//window_set_window_handlers(window, (WindowHandlers ) { .load =
+			//				window_load, .unload = window_unload, });
+			//window_stack_push(window, true);
+		}
+	}
+
+	resetUpdate();
+}
+
+void accel_data_handler(AccelData *accel_data, uint32_t num_samples) {
+  // Process 9 events - every 1 second
+  uint32_t i;
+
+ 			for (i=0;i<num_samples/3;i++){
+          uint32_t appo = i*3; 
+          AccelData accel = accel_data[appo];
+          if (!startedSession) {
+        		lastX = accel.x;
+        		lastY = accel.y;
+        		lastZ = accel.z;
+        	} else {
+        		currX = (accel_data[appo].x+accel_data[appo+1].x+accel_data[appo+2].x)/3;
+        		currY = (accel_data[appo].y+accel_data[appo+1].y+accel_data[appo+2].y)/3;//accel.y;
+        		currZ = (accel_data[appo].z+accel_data[appo+1].z+accel_data[appo+2].z)/3;//accel.z;
+        	}
+        	
+        	did_pebble_vibrate = accel.did_vibrate;
+        
+        	pedometer_update();
+					/*Zm=Zm+abs(accel_data[appo].z);
+
+					Ym=Ym+abs(accel_data[appo].y);
+
+					Xm=Xm+abs(accel_data[appo].x);
+          */
+  			}
+  update_ui_callback();
+}
+
+static void timer_callback(void *data) {
+	AccelData accel = (AccelData ) { .x = 0, .y = 0, .z = 0 };
+	accel_service_peek(&accel);
+
+	if (!startedSession) {
+		lastX = accel.x;
+		lastY = accel.y;
+		lastZ = accel.z;
+	} else {
+		currX = accel.x;
+		currY = accel.y;
+		currZ = accel.z;
+	}
+	
+	did_pebble_vibrate = accel.did_vibrate;
+
+	pedometer_update();
+	update_ui_callback();
+
+	//layer_mark_dirty(window_get_root_layer(pedometer));
+	timer = app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
+}
+
+/*
+ * Handels User Taps on the Pebble
+ */
+void accel_tap_handler(AccelAxisType axis, int32_t direction) {
+  // Process tap on ACCEL_AXIS_X, ACCEL_AXIS_Y or ACCEL_AXIS_Z
+  // Direction is 1 or -1
+  if (axis == ACCEL_AXIS_Z){
+    text_layer_set_text(steps_layer, "TAP :)");
+  }
+}
+
+
+/*
+ * deinit
+ */
+void deinit() {
+  //totalSteps += pedometerCount;
+	persist_write_int(TS, pedometerCount); // save steps on exit
+	window_destroy(window);
+	gbitmap_destroy(background_image_container);
+	gbitmap_destroy(icon_battery);
+	gbitmap_destroy(icon_battery_charge);
+	gbitmap_destroy(icon_bt);
+	text_layer_destroy(date_layer);
+	text_layer_destroy(dig_time_layer);
+  text_layer_destroy(steps_layer);
+	layer_destroy(minute_display_layer);
+	layer_destroy(hour_display_layer);
+	layer_destroy(center_display_layer);
+	layer_destroy(second_display_layer);
+	layer_destroy(battery_layer);
+	layer_destroy(bt_layer);
+	layer_destroy(background_layer);
+	gpath_destroy(hour_hand_path);
+	gpath_destroy(minute_hand_path);
+  accel_data_service_unsubscribe();
+}
 
 /*
  * Main - or main as it is known
  */
 int main(void) {
 	init();
-	tick_timer_service_subscribe(SECOND_UNIT, &handle_tick);
+  
+	tick_timer_service_subscribe(MINUTE_UNIT, &handle_tick);
+  //timer = app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
 	bluetooth_connection_service_subscribe(&bt_connection_handler);
 	battery_state_service_subscribe	(&battery_state_handler);
+  accel_data_service_subscribe(9, accel_data_handler);
+  accel_service_set_sampling_rate(ACCEL_SAMPLING_10HZ);
+  //accel_tap_service_subscribe(accel_tap_handler);
+  
+  //Get saved steps...
+  pedometerCount = persist_exists(TS) ? persist_read_int(TS) : TSD;
+  
 	app_event_loop();
 	deinit();
 }
+
 
