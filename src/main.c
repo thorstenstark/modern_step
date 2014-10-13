@@ -9,7 +9,7 @@ static Layer *hour_display_layer;
 static Layer *center_display_layer;
 static Layer *second_display_layer;
 static TextLayer *date_layer , *dig_time_layer, *steps_layer;
-static char date_text[] = "Wed 13 ";
+static char date_text[] = "Wed 13.11.14 ";
 static char timeBuffer[] = "00:00.";
 static bool bt_ok = false;
 static uint8_t battery_level;
@@ -90,15 +90,22 @@ bool validX, validY, validZ = false;
 bool SID;
 bool isDark;
 bool startedSession = false;
-bool usePowerSaving = true;
+
 
 // Strings used to display theme and calibration options
 char *theme;
 char *cal = "Regular Sensitivity";
+char *locale = "de_DE";
 
 // stores total steps since app install
 static long totalSteps = TSD;
 int32_t lastHour = 0;
+
+// configuration values
+bool usePowerSaving = true;
+bool showSteps = true;
+
+#define SHOW_STEPS 0
 
 void handle_timer(void* vdata) {
 
@@ -240,8 +247,12 @@ void draw_date() {
 
 	time_t now = time(NULL);
 	struct tm *t = localtime(&now);
-
-	strftime(date_text, sizeof(date_text), "%a %d", t);
+  
+  if (strcmp(locale, "de_DE")==0){
+	  strftime(date_text, sizeof(date_text), "%a %d.%m.%y", t);
+  }else{
+    strftime(date_text, sizeof(date_text), "%a %m/%d/%y", t);
+  }
 
 	text_layer_set_text(date_layer, date_text);
 }
@@ -602,6 +613,19 @@ static void timer_callback(void *data) {
 	timer = app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
 }
 
+void update_from_settings(){
+  if (showSteps){
+    accel_data_service_subscribe(9, accel_data_handler);
+    accel_service_set_sampling_rate(ACCEL_SAMPLING_10HZ);
+    static char buf[] = "123456890abcdefghijkl";
+    snprintf(buf, sizeof(buf), "%ld", pedometerCount);
+	  text_layer_set_text(steps_layer, buf);
+  }else{
+    accel_data_service_unsubscribe();
+    text_layer_set_text(steps_layer,"");
+  }
+}
+
 /*
  * Handels User Taps on the Pebble
  */
@@ -613,6 +637,62 @@ void accel_tap_handler(AccelAxisType axis, int32_t direction) {
   }
 }
 
+/*
+ * Handle AppMessages from Pebble JS
+ */
+static void in_recv_handler(DictionaryIterator *iterator, void *context)
+{
+  //Get Tuple
+  Tuple *t = dict_read_first(iterator);
+  if(t)
+  {
+    switch(t->key)
+    {
+    case SHOW_STEPS:
+      //It's the KEY_INVERT key
+      if(strcmp(t->value->cstring, "on") == 0)
+      {
+        //Set and save as inverted
+        showSteps = true;
+ 
+        //pedometerCount = persist_exists(TS) ? persist_read_int(TS) : TSD;
+        pedometerCount = 0;
+	      text_layer_set_text(steps_layer, "0");
+        
+        persist_write_bool(SHOW_STEPS, true);
+      }
+      else if(strcmp(t->value->cstring, "off") == 0)
+      {
+        //Set and save as not inverted
+        showSteps = false;
+        
+        
+        persist_write_bool(SHOW_STEPS, false);
+      }
+      break;
+    /*  
+    case STEPS_UPDATE_INTERVALL:
+      if(strcmp(t->value->cstring, "minute") == 0)
+      {
+        //Set and save as inverted
+         
+        
+        persist_write_int(STEPS_UPDATE_INTERVALL, true);
+      }
+      else if(strcmp(t->value->cstring, "second") == 0)
+      {
+        //Set and save as not inverted
+        accel_data_service_unsubscribe();
+        text_layer_set_text(steps_layer,"");
+        
+        persist_write_int(STEPS_UPDATE_INTERVALL, false);
+      }
+      break;
+      */
+    }
+  }
+  update_from_settings();
+}
 
 /*
  * deinit
@@ -650,14 +730,23 @@ int main(void) {
   //timer = app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
 	bluetooth_connection_service_subscribe(&bt_connection_handler);
 	battery_state_service_subscribe	(&battery_state_handler);
+  
+  // register for acellerometer events
   accel_data_service_subscribe(9, accel_data_handler);
   accel_service_set_sampling_rate(ACCEL_SAMPLING_10HZ);
-  //accel_tap_service_subscribe(accel_tap_handler);
+  //accel_tap_service_subscribe(accel_tap_handler); // if tap guestures are needed...
   
-  //Get saved steps...
+  // enable AppMessage to communicate with Phone and Pebble JS
+  app_message_register_inbox_received((AppMessageInboxReceived) in_recv_handler);
+  app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
+  
+  //Get saved data...
   pedometerCount = persist_exists(TS) ? persist_read_int(TS) : TSD;
+  showSteps = persist_exists(SHOW_STEPS) ? persist_read_bool(SHOW_STEPS) : true ;
+	
+  update_from_settings();
   
-	app_event_loop();
+  app_event_loop();
 	deinit();
 }
 

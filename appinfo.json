@@ -1,5 +1,7 @@
 {
-    "appKeys": {},
+    "appKeys": {
+        "SHOW_STEPS": 0
+    },
     "capabilities": [
         "configurable"
     ],
