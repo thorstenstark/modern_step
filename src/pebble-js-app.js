@@ -1,16 +1,23 @@
 var initialized = false;
 var options = {};
 var showSteps = 'on';
+var showSeconds = 'off';
+var updateInterval = 5;
+
+
 Pebble.addEventListener("ready", function() {
   
-  showSteps = window.localStorage.getItem('showSteps') ? window.localStorage.getItem('showSteps') : 'on';
+  showSteps   = window.localStorage.getItem('showSteps')   ? window.localStorage.getItem('showSteps')   : 'on';
+  showSeconds = window.localStorage.getItem('showSeconds') ? window.localStorage.getItem('showSeconds') : 'off';
+  updateInterval = window.localStorage.getItem('updateInterval') ? window.localStorage.getItem('updateInterval') : 5;
+  updateInterval = parseInt(updateInterval);
   initialized = true;
-  console.log("ready called!" + showSteps);
+  console.log("ready called!" + showSteps + " - "+showSeconds+ " - "+updateInterval);
 });
 
 Pebble.addEventListener("showConfiguration", function() {
-  console.log("showing configuration");
-  Pebble.openURL('http://www.cylox-art.de/pebble/modernwatchstep.html?showSteps='+showSteps);//+encodeURIComponent(JSON.stringify(options)));
+  console.log("showing configurationshowSteps="+showSteps+'&showSeconds='+showSeconds);
+  Pebble.openURL('http://www.cylox-art.de/pebble/modernwatchstep.html?showSteps='+showSteps+'&showSeconds='+showSeconds+'&updateInterval='+updateInterval);
 });
 
 Pebble.addEventListener("webviewclosed", function(e) {
@@ -21,14 +28,21 @@ Pebble.addEventListener("webviewclosed", function(e) {
   if (e.response.charAt(0) == "{" && e.response.slice(-1) == "}" && e.response.length > 5) {
     options = JSON.parse(decodeURIComponent(e.response));
     
-    showSteps = searchingFor = encodeURIComponent(options.SHOW_STEPS);
-    window.localStorage.setItem('showSteps', searchingFor);
+    showSteps = encodeURIComponent(options.SHOW_STEPS);
+    window.localStorage.setItem('showSteps', showSteps);
     
-    console.log("Options = " + JSON.stringify(options));
+    showSeconds = encodeURIComponent(options.SHOW_SECONDS);
+    window.localStorage.setItem('showSeconds', showSeconds);
+    
+    updateInterval = parseInt(encodeURIComponent(options.UPDATE_INTERVAL));
+    window.localStorage.setItem('updateInterval', updateInterval);
+    var newOptions = {SHOW_STEPS:showSteps, SHOW_SECONDS:showSeconds, UPDATE_INTERVAL:updateInterval};
+    
+    console.log("Options = " + JSON.stringify(newOptions));
     
     //Send to Pebble, persist there
     Pebble.sendAppMessage(
-      options,
+      newOptions,
       function(e) {
         console.log("Sending settings data...");
       },

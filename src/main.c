@@ -58,7 +58,7 @@ unsigned int hour_angle_anim = 0;
 #define TSD 1
  
 // Timer used to determine next step check
-static AppTimer *timer;
+//static AppTimer *timer;
 
 // interval to check for next step (in ms)
 const int ACCEL_STEP_MS = 475;
@@ -82,6 +82,7 @@ int sensitivity = 1;
 
 long stepGoal = 8000;
 long pedometerCount = 0;
+long lastPedometerCount = 0;
 long caloriesBurned = 0;
 long tempTotal = 0;
 
@@ -98,14 +99,21 @@ char *cal = "Regular Sensitivity";
 char *locale = "de_DE";
 
 // stores total steps since app install
-static long totalSteps = TSD;
+//static long totalSteps = TSD;
 int32_t lastHour = 0;
+bool shouldUpdateSteps = false;
 
 // configuration values
 bool usePowerSaving = true;
 bool showSteps = true;
+//bool showSeconds = false;
+uint32_t secondsTillStepsUpdate = 0;
+uint32_t stepsUpdateInterval = 30; // in seconds;
 
+// AppMessage Keys
 #define SHOW_STEPS 0
+#define SHOW_SECONDS 1
+#define UPDATE_INTERVAL 2
 
 void handle_timer(void* vdata) {
 
@@ -134,39 +142,43 @@ void handle_timer(void* vdata) {
 }
 
 void second_display_layer_update_callback(Layer *me, GContext* ctx) {
-	(void) me;
-
-	time_t now = time(NULL);
-	struct tm *t = localtime(&now);
-
-	int32_t second_angle = t->tm_sec * (0xffff / 60);
-	int second_hand_length = 70;
-	GPoint center = grect_center_point(&GRECT_FULL_WINDOW);
-	GPoint second = GPoint(center.x, center.y - second_hand_length);
-
-	if (init_anim < ANIM_SECONDS) {
-		second = GPoint(center.x, center.y - 70);
-	} else if (init_anim == ANIM_SECONDS) {
-		second_angle_anim += 0xffff / 60;
-		if (second_angle_anim >= second_angle) {
-			init_anim = ANIM_DONE;
-			second =
-					GPoint(center.x + second_hand_length * sin_lookup(second_angle)/0xffff,
-							center.y + (-second_hand_length) * cos_lookup(second_angle)/0xffff);
-		} else {
-			second =
-					GPoint(center.x + second_hand_length * sin_lookup(second_angle_anim)/0xffff,
-							center.y + (-second_hand_length) * cos_lookup(second_angle_anim)/0xffff);
-		}
-	} else {
-		second =
-				GPoint(center.x + second_hand_length * sin_lookup(second_angle)/0xffff,
-						center.y + (-second_hand_length) * cos_lookup(second_angle)/0xffff);
-	}
-
-	graphics_context_set_stroke_color(ctx, GColorWhite);
-
-	graphics_draw_line(ctx, center, second);
+  //secondsTillStepsUpdate++;
+  
+  if (showSeconds){
+  	(void) me;
+  
+  	time_t now = time(NULL);
+  	struct tm *t = localtime(&now);
+  
+  	int32_t second_angle = t->tm_sec * (0xffff / 60);
+  	int second_hand_length = 70;
+  	GPoint center = grect_center_point(&GRECT_FULL_WINDOW);
+  	GPoint second = GPoint(center.x, center.y - second_hand_length);
+  
+  	if (init_anim < ANIM_SECONDS) {
+  		second = GPoint(center.x, center.y - 70);
+  	} else if (init_anim == ANIM_SECONDS) {
+  		second_angle_anim += 0xffff / 60;
+  		if (second_angle_anim >= second_angle) {
+  			init_anim = ANIM_DONE;
+  			second =
+  					GPoint(center.x + second_hand_length * sin_lookup(second_angle)/0xffff,
+  							center.y + (-second_hand_length) * cos_lookup(second_angle)/0xffff);
+  		} else {
+  			second =
+  					GPoint(center.x + second_hand_length * sin_lookup(second_angle_anim)/0xffff,
+  							center.y + (-second_hand_length) * cos_lookup(second_angle_anim)/0xffff);
+  		}
+  	} else {
+  		second =
+  				GPoint(center.x + second_hand_length * sin_lookup(second_angle)/0xffff,
+  						center.y + (-second_hand_length) * cos_lookup(second_angle)/0xffff);
+  	}
+  
+  	graphics_context_set_stroke_color(ctx, GColorWhite);
+  
+  	graphics_draw_line(ctx, center, second);
+  }
 }
 
 void center_display_layer_update_callback(Layer *me, GContext* ctx) {
@@ -213,7 +225,7 @@ void hour_display_layer_update_callback(Layer *me, GContext* ctx) {
 	time_t now = time(NULL);
 	struct tm *t = localtime(&now);
   
-  if (lastHour > t->tm_hour){
+  if ( t->tm_hour < lastHour){
     pedometerCount = 0;
   }
 	unsigned int angle = t->tm_hour * 30 + t->tm_min / 2;
@@ -231,9 +243,9 @@ void hour_display_layer_update_callback(Layer *me, GContext* ctx) {
 			angle = hour_angle_anim;
 		}
     
-    lastHour = t->tm_hour;
+    
 	}
-
+  lastHour = t->tm_hour;
 	gpath_rotate_to(hour_hand_path, (TRIG_MAX_ANGLE / 360) * angle);
 
 	graphics_context_set_fill_color(ctx, GColorWhite);
@@ -400,7 +412,7 @@ void init() {
 	layer_add_child(window_layer, second_display_layer);
   
   //Power consumption
-  conserve_power(true);
+  //conserve_power(true);
   
   
 }
@@ -426,8 +438,9 @@ void handle_tick(struct tm *tick_time, TimeUnits units_changed) {
 				}
 			}
 		}
-
-		layer_mark_dirty(second_display_layer);
+    if (showSeconds){
+  		layer_mark_dirty(second_display_layer);
+    }
 	}
 	if(clock_is_24h_style()){
 			strftime(timeBuffer, sizeof(timeBuffer), "%H:%M", tick_time);
@@ -436,6 +449,10 @@ void handle_tick(struct tm *tick_time, TimeUnits units_changed) {
 			strftime(timeBuffer,sizeof(timeBuffer),"%I:%M", tick_time);
 		}
 	text_layer_set_text(dig_time_layer, timeBuffer);
+  
+  if(units_changed & SECOND_UNIT){
+    secondsTillStepsUpdate++;
+  }
 }
 
 /*
@@ -525,35 +542,19 @@ void update_ui_callback() {
 		pedometerCount++;
 		//tempTotal++;
 
-		//caloriesBurned = (int) (pedometerCount / STEPS_PER_CALORIE);
-		//static char calBuf[] = "123456890abcdefghijkl";
-		//snprintf(calBuf, sizeof(calBuf), "%ld Calories", caloriesBurned);
-		//text_layer_set_text(calories, calBuf);
-
+		
     // steps
-		static char buf[] = "123456890abcdefghijkl";
-		snprintf(buf, sizeof(buf), "%ld", pedometerCount);
-		text_layer_set_text(steps_layer, buf);
-
-    // total steps
-		//static char buf2[] = "123456890abcdefghijkl";
-		//snprintf(buf2, sizeof(buf2), "%ld in Total", tempTotal);
-		//menu_items[2].subtitle = buf2;
-    
-    // burned calories
-		/*static char buf3[] = "1234567890abcdefg";
-		snprintf(buf3, sizeof(buf3), "%ld Burned",
-				(long) (tempTotal / STEPS_PER_CALORIE));
-		menu_items[3].subtitle = buf3;
-    */
-		//layer_mark_dirty(window_get_root_layer(pedometer));
-		//layer_mark_dirty(window_get_root_layer(menu_window));
+    if (secondsTillStepsUpdate >= stepsUpdateInterval && pedometerCount != lastPedometerCount ){
+  		static char buf[] = "123456890abcdefghijkl";
+  		snprintf(buf, sizeof(buf), "%ld", pedometerCount);
+  		text_layer_set_text(steps_layer, buf);
+      secondsTillStepsUpdate = 0;
+      lastPedometerCount = pedometerCount;
+    }
 
 		if (stepGoal > 0 && pedometerCount == stepGoal) {
 			vibes_long_pulse();
-			//window_set_window_handlers(window, (WindowHandlers ) { .load =
-			//				window_load, .unload = window_unload, });
-			//window_stack_push(window, true);
+			
 		}
 	}
 
@@ -561,7 +562,7 @@ void update_ui_callback() {
 }
 
 void accel_data_handler(AccelData *accel_data, uint32_t num_samples) {
-  // Process 9 events - every 1 second
+  
   uint32_t i;
 
  			for (i=0;i<num_samples/3;i++){
@@ -590,29 +591,10 @@ void accel_data_handler(AccelData *accel_data, uint32_t num_samples) {
   update_ui_callback();
 }
 
-static void timer_callback(void *data) {
-	AccelData accel = (AccelData ) { .x = 0, .y = 0, .z = 0 };
-	accel_service_peek(&accel);
 
-	if (!startedSession) {
-		lastX = accel.x;
-		lastY = accel.y;
-		lastZ = accel.z;
-	} else {
-		currX = accel.x;
-		currY = accel.y;
-		currZ = accel.z;
-	}
-	
-	did_pebble_vibrate = accel.did_vibrate;
-
-	pedometer_update();
-	update_ui_callback();
-
-	//layer_mark_dirty(window_get_root_layer(pedometer));
-	timer = app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
-}
-
+/*
+ * Update Screen and settings when configuration changed
+ */
 void update_from_settings(){
   if (showSteps){
     accel_data_service_subscribe(9, accel_data_handler);
@@ -623,6 +605,11 @@ void update_from_settings(){
   }else{
     accel_data_service_unsubscribe();
     text_layer_set_text(steps_layer,"");
+  }
+  if(showSeconds && !g_conserve){
+    layer_set_hidden(second_display_layer, false);
+  }else{
+    layer_set_hidden(second_display_layer, true);
   }
 }
 
@@ -644,7 +631,7 @@ static void in_recv_handler(DictionaryIterator *iterator, void *context)
 {
   //Get Tuple
   Tuple *t = dict_read_first(iterator);
-  if(t)
+  while (t) 
   {
     switch(t->key)
     {
@@ -653,11 +640,12 @@ static void in_recv_handler(DictionaryIterator *iterator, void *context)
       if(strcmp(t->value->cstring, "on") == 0)
       {
         //Set and save as inverted
-        showSteps = true;
- 
-        //pedometerCount = persist_exists(TS) ? persist_read_int(TS) : TSD;
-        pedometerCount = 0;
-	      text_layer_set_text(steps_layer, "0");
+        if(!showSteps){
+          showSteps = true;
+          //pedometerCount = persist_exists(TS) ? persist_read_int(TS) : TSD;
+          pedometerCount = 0;
+  	      text_layer_set_text(steps_layer, "0");
+        }
         
         persist_write_bool(SHOW_STEPS, true);
       }
@@ -665,32 +653,39 @@ static void in_recv_handler(DictionaryIterator *iterator, void *context)
       {
         //Set and save as not inverted
         showSteps = false;
-        
-        
+
         persist_write_bool(SHOW_STEPS, false);
       }
       break;
-    /*  
-    case STEPS_UPDATE_INTERVALL:
-      if(strcmp(t->value->cstring, "minute") == 0)
+      
+    case SHOW_SECONDS:
+      if(strcmp(t->value->cstring, "on") == 0)
       {
-        //Set and save as inverted
-         
-        
-        persist_write_int(STEPS_UPDATE_INTERVALL, true);
+        //Set and save 
+        showSeconds = true;
+ 
+        persist_write_bool(SHOW_SECONDS, true);
       }
-      else if(strcmp(t->value->cstring, "second") == 0)
+      else if(strcmp(t->value->cstring, "off") == 0)
       {
-        //Set and save as not inverted
-        accel_data_service_unsubscribe();
-        text_layer_set_text(steps_layer,"");
+        //Set and save 
+        showSeconds = false;
         
-        persist_write_int(STEPS_UPDATE_INTERVALL, false);
+        persist_write_bool(SHOW_SECONDS, false);
       }
       break;
-      */
+      
+    case UPDATE_INTERVAL:
+      stepsUpdateInterval = t->value->uint32;
+      APP_LOG(APP_LOG_LEVEL_DEBUG, "Interaval: %d", (int)stepsUpdateInterval);
+      persist_write_int(UPDATE_INTERVAL, stepsUpdateInterval);
+    
+      break;
     }
+    
+    t = dict_read_next(iterator);
   }
+    
   update_from_settings();
 }
 
@@ -726,13 +721,13 @@ void deinit() {
 int main(void) {
 	init();
   
-	tick_timer_service_subscribe(MINUTE_UNIT, &handle_tick);
-  //timer = app_timer_register(ACCEL_STEP_MS, timer_callback, NULL);
+	tick_timer_service_subscribe(SECOND_UNIT , &handle_tick);
+  
 	bluetooth_connection_service_subscribe(&bt_connection_handler);
 	battery_state_service_subscribe	(&battery_state_handler);
   
   // register for acellerometer events
-  accel_data_service_subscribe(9, accel_data_handler);
+  accel_data_service_subscribe(18, accel_data_handler);
   accel_service_set_sampling_rate(ACCEL_SAMPLING_10HZ);
   //accel_tap_service_subscribe(accel_tap_handler); // if tap guestures are needed...
   
@@ -743,7 +738,7 @@ int main(void) {
   //Get saved data...
   pedometerCount = persist_exists(TS) ? persist_read_int(TS) : TSD;
   showSteps = persist_exists(SHOW_STEPS) ? persist_read_bool(SHOW_STEPS) : true ;
-	
+	stepsUpdateInterval = persist_exists(UPDATE_INTERVAL) ? persist_read_int(UPDATE_INTERVAL) : 10 ;
   update_from_settings();
   
   app_event_loop();
