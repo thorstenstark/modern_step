@@ -8,7 +8,7 @@ static Layer *minute_display_layer;
 static Layer *hour_display_layer;
 static Layer *center_display_layer;
 static Layer *second_display_layer;
-static TextLayer *date_layer , *dig_time_layer, *steps_layer;
+static TextLayer *date_layer , *dig_time_layer, *steps_layer, *battery_number_layer;
 static char date_text[] = "Wed 13.11.14 ";
 static char timeBuffer[] = "00:00.";
 static bool bt_ok = false;
@@ -292,6 +292,10 @@ void battery_state_handler(BatteryChargeState charge) {
 	battery_level = charge.charge_percent;
 	battery_plugged = charge.is_plugged;
 	layer_mark_dirty(battery_layer);
+  static char buf_batt[] = "1234567890";
+  snprintf(buf_batt, sizeof(buf_batt), "%d", charge.charge_percent);
+  text_layer_set_text(battery_number_layer, buf_batt);
+  APP_LOG(APP_LOG_LEVEL_INFO, "BATTERY VALUE: %u", battery_level);
 	if (!battery_plugged && battery_level < 20)
 		conserve_power(true);
 	//else
@@ -372,13 +376,23 @@ void init() {
 	BatteryChargeState initial = battery_state_service_peek();
 	battery_level = initial.charge_percent;
 	battery_plugged = initial.is_plugged;
-	battery_layer = layer_create(GRect(50,56,24,12)); //24*12
+	battery_layer = layer_create(GRect(45,56,24,12)); //24*12
 	layer_set_update_proc(battery_layer, &battery_layer_update_callback);
 	layer_add_child(window_layer, battery_layer);
 
+  battery_number_layer = text_layer_create(GRect(68, 53, 18, 14));
+	text_layer_set_text_color(battery_number_layer, GColorWhite);
+	text_layer_set_text_alignment(battery_number_layer, GTextAlignmentLeft);
+	text_layer_set_background_color(battery_number_layer, GColorClear);
+	text_layer_set_font(battery_number_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
+	layer_add_child(window_layer, text_layer_get_layer(battery_number_layer));
+  static char buf_batt[] = "1234567890";
+  snprintf(buf_batt, sizeof(buf_batt), "%d", initial.charge_percent);
+  text_layer_set_text(battery_number_layer, buf_batt);
+  
 
 	bt_ok = bluetooth_connection_service_peek();
-	bt_layer = layer_create(GRect(83,56,9,12)); //9*12
+	bt_layer = layer_create(GRect(88,56,9,12)); //9*12
 	layer_set_update_proc(bt_layer, &bt_layer_update_callback);
 	layer_add_child(window_layer, bt_layer);
 
