@@ -106,6 +106,7 @@ bool shouldUpdateSteps = false;
 // configuration values
 bool usePowerSaving = true;
 bool showSteps = true;
+bool showBattery = true;
 //bool showSeconds = false;
 uint32_t secondsTillStepsUpdate = 0;
 uint32_t stepsUpdateInterval = 30; // in seconds;
@@ -114,6 +115,7 @@ uint32_t stepsUpdateInterval = 30; // in seconds;
 #define SHOW_STEPS 0
 #define SHOW_SECONDS 1
 #define UPDATE_INTERVAL 2
+#define SHOW_BATTERY 3
 
 void handle_timer(void* vdata) {
 
@@ -292,10 +294,12 @@ void battery_state_handler(BatteryChargeState charge) {
 	battery_level = charge.charge_percent;
 	battery_plugged = charge.is_plugged;
 	layer_mark_dirty(battery_layer);
-  static char buf_batt[] = "1234567890";
-  snprintf(buf_batt, sizeof(buf_batt), "%d", charge.charge_percent);
-  text_layer_set_text(battery_number_layer, buf_batt);
-  APP_LOG(APP_LOG_LEVEL_INFO, "BATTERY VALUE: %u", battery_level);
+  if(showBattery){
+    static char buf_batt[] = "1234567890";
+    snprintf(buf_batt, sizeof(buf_batt), "%d", charge.charge_percent);
+    text_layer_set_text(battery_number_layer, buf_batt);
+  }
+  
 	if (!battery_plugged && battery_level < 20)
 		conserve_power(true);
 	//else
@@ -386,9 +390,11 @@ void init() {
 	text_layer_set_background_color(battery_number_layer, GColorClear);
 	text_layer_set_font(battery_number_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14));
 	layer_add_child(window_layer, text_layer_get_layer(battery_number_layer));
-  static char buf_batt[] = "1234567890";
-  snprintf(buf_batt, sizeof(buf_batt), "%d", initial.charge_percent);
-  text_layer_set_text(battery_number_layer, buf_batt);
+  if(showBattery){
+    static char buf_batt[] = "1234567890";
+    snprintf(buf_batt, sizeof(buf_batt), "%d", initial.charge_percent);
+    text_layer_set_text(battery_number_layer, buf_batt);
+  }
   
 
 	bt_ok = bluetooth_connection_service_peek();
@@ -625,6 +631,8 @@ void update_from_settings(){
   }else{
     layer_set_hidden(second_display_layer, true);
   }
+  
+  
 }
 
 /*
@@ -695,7 +703,34 @@ static void in_recv_handler(DictionaryIterator *iterator, void *context)
       persist_write_int(UPDATE_INTERVAL, stepsUpdateInterval);
     
       break;
+      
+    case SHOW_BATTERY:
+      //It's the KEY_INVERT key
+      if(strcmp(t->value->cstring, "on") == 0)
+      {
+        //Set and save as inverted
+        if(!showBattery){
+          showBattery = true;
+          
+  	      BatteryChargeState state = battery_state_service_peek();
+	        static char buf_batt[] = "1234567890";
+          snprintf(buf_batt, sizeof(buf_batt), "%d", state.charge_percent);
+          text_layer_set_text(battery_number_layer, buf_batt);
+  
+        }
+        
+        persist_write_bool(SHOW_BATTERY, true);
+      }
+      else if(strcmp(t->value->cstring, "off") == 0)
+      {
+        //Set and save as not inverted
+        showBattery = false;
+        text_layer_set_text(battery_number_layer, "");
+        persist_write_bool(SHOW_BATTERY, false);
+      }
+      break;
     }
+    
     
     t = dict_read_next(iterator);
   }
@@ -753,6 +788,7 @@ int main(void) {
   pedometerCount = persist_exists(TS) ? persist_read_int(TS) : TSD;
   showSteps = persist_exists(SHOW_STEPS) ? persist_read_bool(SHOW_STEPS) : true ;
 	stepsUpdateInterval = persist_exists(UPDATE_INTERVAL) ? persist_read_int(UPDATE_INTERVAL) : 10 ;
+  showBattery = persist_exists(SHOW_BATTERY) ? persist_read_bool(SHOW_BATTERY) : true ;
   update_from_settings();
   
   app_event_loop();

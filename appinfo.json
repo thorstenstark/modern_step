@@ -1,5 +1,6 @@
 {
     "appKeys": {
+        "SHOW_BATTERY": 3,
         "SHOW_SECONDS": 1,
         "SHOW_STEPS": 0,
         "UPDATE_INTERVAL": 2

@@ -2,6 +2,7 @@ var initialized = false;
 var options = {};
 var showSteps = 'on';
 var showSeconds = 'off';
+var showBattery = 'on';
 var updateInterval = 5;
 
 
@@ -9,6 +10,7 @@ Pebble.addEventListener("ready", function() {
   
   showSteps   = window.localStorage.getItem('showSteps')   ? window.localStorage.getItem('showSteps')   : 'on';
   showSeconds = window.localStorage.getItem('showSeconds') ? window.localStorage.getItem('showSeconds') : 'off';
+  showBattery = window.localStorage.getItem('showBattery') ? window.localStorage.getItem('showBattery') : 'on';
   updateInterval = window.localStorage.getItem('updateInterval') ? window.localStorage.getItem('updateInterval') : 5;
   updateInterval = parseInt(updateInterval);
   initialized = true;
@@ -16,8 +18,8 @@ Pebble.addEventListener("ready", function() {
 });
 
 Pebble.addEventListener("showConfiguration", function() {
-  console.log("showing configurationshowSteps="+showSteps+'&showSeconds='+showSeconds);
-  Pebble.openURL('http://www.cylox-art.de/pebble/modernwatchstep.html?showSteps='+showSteps+'&showSeconds='+showSeconds+'&updateInterval='+updateInterval);
+  console.log("showing configurationshowSteps="+showSteps+' &showSeconds='+showSeconds+' &showBattery='+showBattery);
+  Pebble.openURL('http://www.cylox-art.de/pebble/modernwatchstep.html?showSteps='+showSteps+'&showSeconds='+showSeconds+'&updateInterval='+updateInterval+'&showBattery='+showBattery);
 });
 
 Pebble.addEventListener("webviewclosed", function(e) {
@@ -34,9 +36,12 @@ Pebble.addEventListener("webviewclosed", function(e) {
     showSeconds = encodeURIComponent(options.SHOW_SECONDS);
     window.localStorage.setItem('showSeconds', showSeconds);
     
+    showBattery = encodeURIComponent(options.SHOW_BATTERY);
+    window.localStorage.setItem('showBattery', showBattery);
+    
     updateInterval = parseInt(encodeURIComponent(options.UPDATE_INTERVAL));
     window.localStorage.setItem('updateInterval', updateInterval);
-    var newOptions = {SHOW_STEPS:showSteps, SHOW_SECONDS:showSeconds, UPDATE_INTERVAL:updateInterval};
+    var newOptions = {SHOW_STEPS:showSteps, SHOW_SECONDS:showSeconds, UPDATE_INTERVAL:updateInterval, SHOW_BATTERY:showBattery};
     
     console.log("Options = " + JSON.stringify(newOptions));
     
