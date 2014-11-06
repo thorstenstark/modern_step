@@ -9,3 +9,4 @@ With settings pane where you can
 - turn seconds hand on/off
 - choose step counting minimal update time (1, 5, 10, 30 seconds)
 
+The Watchapp can be found in Pebble Store: https://apps.getpebble.com/applications/545b1efcf2e6f767da00002f
